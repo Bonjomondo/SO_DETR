@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+.pytest_cache/
+.mypy_cache/
+
+# Environments and editors
+.venv/
+venv/
+env/
+.env
+.vscode/
+.idea/
+.DS_Store
+
+# Experiment outputs
+runs/
+wandb/
+mlruns/
+
+# Local data and generated configs
+datasets/
+data/
+configs/visdrone-local.yaml
+
+# Weights and deployment artifacts
+weights/
+*.pt
+*.pth
+*.onnx
+*.engine
+*.trt
+*.torchscript
+*.mlmodel
+
+# Logs and temporary files
+*.log
+*.tmp
