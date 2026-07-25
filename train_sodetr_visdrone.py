@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Reproducible SO-DETR baseline training entry point for VisDrone.
+"""Reproducible SO-DETR V1.1 training entry point for VisDrone.
 
-V1.0 intentionally keeps the published SO-DETR architecture unchanged. It
-removes machine-specific absolute paths and exposes the training protocol as
-command-line arguments so experiments can be repeated across machines and
-seeds.
+V1.1 adds scale-adaptive Expanded-IoU supervision while keeping the model
+architecture and inference graph unchanged. The recommended setting adapts
+only encoder query-quality targets and leaves the original regression loss
+untouched for a controlled ablation.
 """
 
 from __future__ import annotations
@@ -13,8 +13,6 @@ import argparse
 from pathlib import Path
 from typing import Dict
 
-from ultralytics import RTDETR
-
 
 ROOT = Path(__file__).resolve().parent
 MODEL_CONFIGS: Dict[str, Path] = {
@@ -22,6 +20,12 @@ MODEL_CONFIGS: Dict[str, Path] = {
     "r50": ROOT / "ultralytics/cfg/models/A-Test-r50-M.yaml",
     "ev2": ROOT / "ultralytics/cfg/models/A-Test-M-EV2.yaml",
 }
+EXPANDED_IOU_MODES = (
+    "fixed",
+    "adaptive-quality",
+    "adaptive-regression",
+    "adaptive-both",
+)
 
 
 def existing_file(value: str) -> Path:
@@ -34,13 +38,13 @@ def existing_file(value: str) -> Path:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Train a clean SO-DETR V1.0 baseline on VisDrone."
+        description="Train SO-DETR V1.1 with scale-adaptive Expanded-IoU on VisDrone."
     )
     parser.add_argument(
         "--model",
         choices=tuple(MODEL_CONFIGS),
         default="r18",
-        help="Published SO-DETR model variant. V1.0 development baseline is r18.",
+        help="Published SO-DETR model variant. V1.1 development model is r18.",
     )
     parser.add_argument(
         "--model-cfg",
@@ -67,14 +71,28 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--weight-decay", type=float, default=1e-4)
     parser.add_argument("--mixup", type=float, default=0.2)
     parser.add_argument("--close-mosaic", type=int, default=0)
+    parser.add_argument(
+        "--expanded-iou-mode",
+        choices=EXPANDED_IOU_MODES,
+        default="adaptive-quality",
+        help=(
+            "Where to use the scale-adaptive ratio. adaptive-quality is the "
+            "recommended V1.1 experiment; fixed exactly reproduces V1.0 loss behavior."
+        ),
+    )
+    parser.add_argument("--expanded-iou-fixed-ratio", type=float, default=1.25)
+    parser.add_argument("--expanded-iou-alpha", type=float, default=0.5)
+    parser.add_argument("--expanded-iou-tau", type=float, default=0.01)
+    parser.add_argument("--expanded-iou-min-ratio", type=float, default=1.0)
+    parser.add_argument("--expanded-iou-max-ratio", type=float, default=1.5)
     parser.add_argument("--project", default="runs/train")
     parser.add_argument(
         "--name",
         default=None,
-        help="Run name. Defaults to sodetr-v1-<model>-baseline-seed<seed>.",
+        help="Run name. Defaults to sodetr-v1.1-<model>-<mode>-seed<seed>.",
     )
     parser.add_argument("--cache", action="store_true", help="Cache the dataset.")
-    parser.add_argument("--amp", action="store_true", help="Enable AMP. V1.0 default is disabled.")
+    parser.add_argument("--amp", action="store_true", help="Enable AMP. V1.1 default is disabled.")
     parser.add_argument(
         "--non-deterministic",
         action="store_true",
@@ -98,12 +116,24 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
+    from ultralytics import RTDETR
+
+    if args.expanded_iou_fixed_ratio <= 0:
+        raise ValueError("--expanded-iou-fixed-ratio must be positive.")
+    if args.expanded_iou_alpha < 0:
+        raise ValueError("--expanded-iou-alpha must be non-negative.")
+    if args.expanded_iou_tau <= 0:
+        raise ValueError("--expanded-iou-tau must be positive.")
+    if args.expanded_iou_min_ratio <= 0:
+        raise ValueError("--expanded-iou-min-ratio must be positive.")
+    if args.expanded_iou_max_ratio < args.expanded_iou_min_ratio:
+        raise ValueError("--expanded-iou-max-ratio must be >= --expanded-iou-min-ratio.")
 
     model_cfg = args.model_cfg or MODEL_CONFIGS[args.model]
     if not model_cfg.is_file():
         raise FileNotFoundError(f"Model config does not exist: {model_cfg}")
 
-    run_name = args.name or f"sodetr-v1-{args.model}-baseline-seed{args.seed}"
+    run_name = args.name or f"sodetr-v1.1-{args.model}-{args.expanded_iou_mode}-seed{args.seed}"
 
     # For a true resume, construct the model from the checkpoint and let the
     # trainer restore its saved optimizer/scheduler state where supported.
@@ -126,6 +156,12 @@ def main() -> None:
         "weight_decay": args.weight_decay,
         "mixup": args.mixup,
         "close_mosaic": args.close_mosaic,
+        "expanded_iou_mode": args.expanded_iou_mode,
+        "expanded_iou_fixed_ratio": args.expanded_iou_fixed_ratio,
+        "expanded_iou_alpha": args.expanded_iou_alpha,
+        "expanded_iou_tau": args.expanded_iou_tau,
+        "expanded_iou_min_ratio": args.expanded_iou_min_ratio,
+        "expanded_iou_max_ratio": args.expanded_iou_max_ratio,
         "cache": args.cache,
         "amp": args.amp,
         "pretrained": not args.no_pretrained,
@@ -140,9 +176,15 @@ def main() -> None:
     if args.resume is not None:
         train_args["resume"] = True
 
-    print("SO-DETR V1.0 baseline")
+    print("SO-DETR V1.1 scale-adaptive Expanded-IoU")
     print(f"  model: {model_source}")
     print(f"  data:  {args.data}")
+    print(f"  mode:  {args.expanded_iou_mode}")
+    print(
+        "  ratio: "
+        f"1 + {args.expanded_iou_alpha} * exp(-area / {args.expanded_iou_tau}), "
+        f"clamped to [{args.expanded_iou_min_ratio}, {args.expanded_iou_max_ratio}]"
+    )
     print(f"  run:   {Path(args.project) / run_name}")
     model.train(**train_args)
 

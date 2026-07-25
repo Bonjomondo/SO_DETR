@@ -111,6 +111,16 @@ mixup: 0.2 # (float) image mixup (probability)
 # mixup: 0 # (float) image mixup (probability)
 copy_paste: 0.0  # (float) segment copy-paste (probability)
 
+# SO-DETR scale-adaptive Expanded-IoU -------------------------------------------------------------------------------
+# Keep the framework default fixed for compatibility with legacy entry points.
+# train_sodetr_visdrone.py selects adaptive-quality by default on V1.1.
+expanded_iou_mode: fixed  # fixed, adaptive-quality, adaptive-regression, adaptive-both
+expanded_iou_fixed_ratio: 1.25
+expanded_iou_alpha: 0.5
+expanded_iou_tau: 0.01  # normalized target-area decay scale
+expanded_iou_min_ratio: 1.0
+expanded_iou_max_ratio: 1.5
+
 # Custom config.yaml ---------------------------------------------------------------------------------------------------
 cfg:  # (str, optional) for overriding defaults.yaml
 

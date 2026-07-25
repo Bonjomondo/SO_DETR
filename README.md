@@ -1,19 +1,18 @@
 <h2 align="center">SO-DETR: Leveraging Dual-Domain Features and Knowledge Distillation for Small Object Detection</h2>
 
-This repository is a research fork of the official SO-DETR implementation. The `SO-DETR-V1.0` branch establishes a clean, reproducible baseline before introducing new architectural or distillation changes.
+This repository is a research fork of the official SO-DETR implementation. The `SO-DETR-V1.1` branch adds scale-adaptive Expanded-IoU query-quality supervision on top of the clean, reproducible V1.0 baseline.
 
-## V1.0 baseline
+## V1.1 scale-adaptive Expanded-IoU
 
-V1.0 keeps the published SO-DETR model unchanged and adds:
+V1.1 replaces the fixed `ratio=1.25` query-quality target with a per-target ratio:
 
-- a portable command-line training entry point;
-- a VisDrone dataset template;
-- standardized experiment defaults;
-- dependency and artifact-management files;
-- removal of the hard-coded training paths in `train_exp.py`;
-- a YAML type fix for `logical_loss_ratio`.
+```text
+ratio = clamp(1 + alpha * exp(-normalized_area / tau), min_ratio, max_ratio)
+```
 
-The development baseline is **SO-DETR-R18 without knowledge distillation**.
+The recommended defaults are `alpha=0.5`, `tau=0.01`, `min_ratio=1.0`, and `max_ratio=1.5`. Small targets receive more tolerant query-quality supervision, while large targets approach ordinary IoU geometry. The default V1.1 experiment applies adaptation only to the query-quality target; the published SO-DETR regression loss remains fixed at `ratio=1.25`.
+
+This change affects training only. It adds no parameters, FLOPs, or inference latency.
 
 ### Quick start
 
@@ -30,7 +29,7 @@ cp configs/visdrone-local.example.yaml configs/visdrone-local.yaml
 # Edit the `path` field in configs/visdrone-local.yaml.
 ```
 
-Run the V1.0 R18 baseline:
+Run the recommended V1.1 R18 experiment:
 
 ```bash
 python train_sodetr_visdrone.py \
@@ -45,10 +44,11 @@ python train_sodetr_visdrone.py \
   --seed 0 \
   --close-mosaic 0 \
   --mixup 0.2 \
-  --lrf 1.0
+  --lrf 1.0 \
+  --expanded-iou-mode adaptive-quality
 ```
 
-The same protocol is already encoded as the V1.0 defaults, so this is equivalent:
+The same protocol is encoded as the V1.1 trainer defaults, so this is equivalent:
 
 ```bash
 python train_sodetr_visdrone.py \
@@ -56,7 +56,17 @@ python train_sodetr_visdrone.py \
   --data configs/visdrone-local.yaml
 ```
 
-See [V1.0_BASELINE.md](V1.0_BASELINE.md) for the experiment boundary, resume command, other model variants, and multi-seed procedure.
+Run Q0-Q3 sequentially:
+
+```bash
+python run_sodetr_v1_1_ablation.py \
+  --only all \
+  --model r18 \
+  --data configs/visdrone-local.yaml \
+  --device 0,1
+```
+
+See [V1.1_SCALE_ADAPTIVE_IOU.md](V1.1_SCALE_ADAPTIVE_IOU.md) for the design boundary, ablation mapping, commands, and acceptance criteria. The unchanged baseline is documented in [V1.0_BASELINE.md](V1.0_BASELINE.md).
 
 ## Published model configurations
 
@@ -90,4 +100,4 @@ See [V1.0_BASELINE.md](V1.0_BASELINE.md) for the experiment boundary, resume com
 | SO-DETR-EV2 | 12.1 | 33.3 | 33.7 | 70.6 |
 | SO-DETR-EV2 (Distilled) | 12.1 | 33.3 | 36.9 | 73.6 |
 
-These numbers are retained as source-reported reference values. V1.0 experiments in this fork should be recorded separately under the standardized training protocol.
+These numbers are retained as source-reported reference values. V1.0 and V1.1 experiments in this fork should be recorded separately under the standardized training protocol.

@@ -6,7 +6,9 @@ import torch.nn.functional as F
 import dill as pickle
 
 from ultralytics.utils.loss import FocalLoss, VarifocalLoss, SlideLoss, EMASlideLoss, SlideVarifocalLoss, EMASlideVarifocalLoss
-from ultralytics.utils.metrics import bbox_iou, bbox_inner_iou, bbox_focaler_iou, bbox_mpdiou, bbox_inner_mpdiou, bbox_focaler_mpdiou, wasserstein_loss, WiseIouLoss
+from ultralytics.utils.metrics import (WiseIouLoss, bbox_focaler_iou, bbox_focaler_mpdiou, bbox_inner_iou,
+                                       bbox_inner_mpdiou, bbox_iou, bbox_mpdiou,
+                                       scale_adaptive_expanded_iou_ratio, wasserstein_loss)
 
 from .ops import HungarianMatcher
 
@@ -42,7 +44,13 @@ class DETRLoss(nn.Module):
                  use_svfl=False, # SlideVarifocalLoss
                  use_emasvfl=False, # EMASlideVarifocalLoss
                  use_uni_match=False,
-                 uni_match_ind=0):
+                 uni_match_ind=0,
+                 expanded_iou_mode='fixed',
+                 expanded_iou_fixed_ratio=1.25,
+                 expanded_iou_alpha=0.5,
+                 expanded_iou_tau=0.01,
+                 expanded_iou_min_ratio=1.0,
+                 expanded_iou_max_ratio=1.5):
         """
         DETR loss function.
 
@@ -53,6 +61,14 @@ class DETRLoss(nn.Module):
             use_vfl (bool): Use VarifocalLoss or not.
             use_uni_match (bool): Whether to use a fixed layer to assign labels for auxiliary branch.
             uni_match_ind (int): The fixed indices of a layer.
+            expanded_iou_mode (str): One of fixed, adaptive-quality,
+                adaptive-regression, or adaptive-both.
+            expanded_iou_fixed_ratio (float): Original SO-DETR ratio used by
+                branches that are not adaptive.
+            expanded_iou_alpha (float): Additive scale-adaptive ratio strength.
+            expanded_iou_tau (float): Normalized target-area decay scale.
+            expanded_iou_min_ratio (float): Minimum adaptive ratio.
+            expanded_iou_max_ratio (float): Maximum adaptive ratio.
         """
         super().__init__()
 
@@ -72,6 +88,37 @@ class DETRLoss(nn.Module):
         self.use_uni_match = use_uni_match
         self.uni_match_ind = uni_match_ind
         self.device = None
+
+        valid_expanded_iou_modes = {
+            'fixed',
+            'adaptive-quality',
+            'adaptive-regression',
+            'adaptive-both',
+        }
+        if expanded_iou_mode not in valid_expanded_iou_modes:
+            raise ValueError(
+                f"Unsupported expanded_iou_mode={expanded_iou_mode!r}. "
+                f"Expected one of {sorted(valid_expanded_iou_modes)}."
+            )
+        if expanded_iou_fixed_ratio <= 0:
+            raise ValueError(
+                f"expanded_iou_fixed_ratio must be positive, got {expanded_iou_fixed_ratio}."
+            )
+        # Validate all adaptive parameters once at construction. A one-box
+        # tensor keeps validation and runtime ratio generation in one place.
+        scale_adaptive_expanded_iou_ratio(
+            torch.zeros(1, 4),
+            alpha=expanded_iou_alpha,
+            tau=expanded_iou_tau,
+            min_ratio=expanded_iou_min_ratio,
+            max_ratio=expanded_iou_max_ratio,
+        )
+        self.expanded_iou_mode = expanded_iou_mode
+        self.expanded_iou_fixed_ratio = expanded_iou_fixed_ratio
+        self.expanded_iou_alpha = expanded_iou_alpha
+        self.expanded_iou_tau = expanded_iou_tau
+        self.expanded_iou_min_ratio = expanded_iou_min_ratio
+        self.expanded_iou_max_ratio = expanded_iou_max_ratio
         
         # for nwd loss
         self.nwd_loss = False
@@ -81,6 +128,22 @@ class DETRLoss(nn.Module):
         self.use_wiseiou = False
         if self.use_wiseiou:
             self.wiou_loss = WiseIouLoss(ltype='WIoU', monotonous=False, inner_iou=False, focaler_iou=False)
+
+    def _expanded_iou_ratio(self, gt_bboxes, branch):
+        """Return the fixed or scale-adaptive ratio for a loss branch."""
+        adaptive = (
+            self.expanded_iou_mode == 'adaptive-both'
+            or self.expanded_iou_mode == f'adaptive-{branch}'
+        )
+        if not adaptive:
+            return self.expanded_iou_fixed_ratio
+        return scale_adaptive_expanded_iou_ratio(
+            gt_bboxes,
+            alpha=self.expanded_iou_alpha,
+            tau=self.expanded_iou_tau,
+            min_ratio=self.expanded_iou_min_ratio,
+            max_ratio=self.expanded_iou_max_ratio,
+        )
 
     def _get_loss_class(self, pred_scores, targets, gt_scores, num_gts, postfix=''):
         """Computes the classification loss based on predictions, target values, and ground truth scores."""
@@ -146,7 +209,14 @@ class DETRLoss(nn.Module):
             # loss[name_giou] = self.wiou_loss(pred_bboxes, gt_bboxes, ret_iou=False, ratio=0.7, d=0.0, u=0.95, **{'mpdiou_hw':2}) # Wise-MPDIoU,Wise-Inner-MPDIoU,Wise-Focaler-MPDIoU
         else:
             # loss[name_giou]   = 1.0 - bbox_iou(pred_bboxes, gt_bboxes, xywh=True, GIoU=True)  #GIOU
-            loss[name_giou] = 1.0 - bbox_inner_iou(pred_bboxes, gt_bboxes, xywh=True, SIoU=True, ratio=1.25) # Inner IoU
+            regression_ratio = self._expanded_iou_ratio(gt_bboxes, branch='regression')
+            loss[name_giou] = 1.0 - bbox_inner_iou(
+                pred_bboxes,
+                gt_bboxes,
+                xywh=True,
+                SIoU=True,
+                ratio=regression_ratio,
+            )
         
         if self.nwd_loss:
             nwd = wasserstein_loss(pred_bboxes, gt_bboxes)
@@ -284,7 +354,13 @@ class DETRLoss(nn.Module):
         gt_scores = torch.zeros([bs, nq], device=pred_scores.device)
         if len(gt_bboxes):
             # gt_scores[idx] = bbox_iou(pred_bboxes.detach(), gt_bboxes, xywh=True).squeeze(-1)
-            gt_scores[idx] =  bbox_inner_iou(pred_bboxes.detach(), gt_bboxes, xywh=True, ratio=1.25).squeeze(-1) 
+            quality_ratio = self._expanded_iou_ratio(gt_bboxes, branch='quality')
+            gt_scores[idx] = bbox_inner_iou(
+                pred_bboxes.detach(),
+                gt_bboxes,
+                xywh=True,
+                ratio=quality_ratio,
+            ).squeeze(-1)
 
         loss = {}
         loss.update(self._get_loss_class(pred_scores, targets, gt_scores, len(gt_bboxes), postfix))

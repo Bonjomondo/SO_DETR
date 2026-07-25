@@ -179,7 +179,53 @@ def  bbox_iou(box1, box2, xywh=True, GIoU=False, DIoU=False, CIoU=False, EIoU=Fa
         return iou - (c_area - union) / c_area  # GIoU https://arxiv.org/pdf/1902.09630.pdf
     return iou  # IoU
 
+def scale_adaptive_expanded_iou_ratio(
+        gt_bboxes,
+        xywh=True,
+        alpha=0.5,
+        tau=0.01,
+        min_ratio=1.0,
+        max_ratio=1.5):
+    """Return a per-target Expanded-IoU ratio from normalized ground-truth area.
+
+    Small targets receive a larger inner-box expansion while large targets
+    approach ``min_ratio``:
+
+        ratio = clamp(1 + alpha * exp(-area / tau), min_ratio, max_ratio)
+
+    Args:
+        gt_bboxes (torch.Tensor): Ground-truth boxes with shape (..., 4).
+        xywh (bool): Whether boxes use normalized ``xywh`` format. When False,
+            boxes are interpreted as normalized ``xyxy``.
+        alpha (float): Maximum additive expansion before clamping.
+        tau (float): Area decay scale in normalized image coordinates.
+        min_ratio (float): Lower ratio bound.
+        max_ratio (float): Upper ratio bound.
+
+    Returns:
+        torch.Tensor: Broadcastable ratios with shape (..., 1).
+    """
+    if tau <= 0:
+        raise ValueError(f"expanded_iou_tau must be positive, got {tau}.")
+    if alpha < 0:
+        raise ValueError(f"expanded_iou_alpha must be non-negative, got {alpha}.")
+    if min_ratio <= 0 or max_ratio < min_ratio:
+        raise ValueError(
+            "Expanded-IoU ratio bounds must satisfy "
+            f"0 < min_ratio <= max_ratio, got {min_ratio} and {max_ratio}."
+        )
+
+    if xywh:
+        wh = gt_bboxes[..., 2:4]
+    else:
+        wh = gt_bboxes[..., 2:4] - gt_bboxes[..., 0:2]
+    area = wh.clamp(min=0).prod(dim=-1, keepdim=True)
+    ratio = 1.0 + alpha * torch.exp(-area / tau)
+    return ratio.clamp(min=min_ratio, max=max_ratio)
+
+
 def get_inner_iou(box1, box2, xywh=True, eps=1e-7, ratio=0.7):
+    """Calculate Inner/Expanded IoU with a scalar or broadcastable ratio tensor."""
     if not xywh:
         box1, box2 = ops.xyxy2xywh(box1), ops.xyxy2xywh(box2)
     (x1, y1, w1, h1), (x2, y2, w2, h2) = box1.chunk(4, -1), box2.chunk(4, -1)

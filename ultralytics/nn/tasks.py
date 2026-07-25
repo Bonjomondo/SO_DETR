@@ -465,7 +465,21 @@ class RTDETRDetectionModel(DetectionModel):
         """Initialize the loss criterion for the RTDETRDetectionModel."""
         from ultralytics.models.utils.loss import RTDETRDetectionLoss
 
-        return RTDETRDetectionLoss(nc=self.nc, use_vfl=True)
+        args = self.args
+
+        def get_arg(name, default):
+            return args.get(name, default) if isinstance(args, dict) else getattr(args, name, default)
+
+        return RTDETRDetectionLoss(
+            nc=self.nc,
+            use_vfl=True,
+            expanded_iou_mode=get_arg('expanded_iou_mode', 'fixed'),
+            expanded_iou_fixed_ratio=get_arg('expanded_iou_fixed_ratio', 1.25),
+            expanded_iou_alpha=get_arg('expanded_iou_alpha', 0.5),
+            expanded_iou_tau=get_arg('expanded_iou_tau', 0.01),
+            expanded_iou_min_ratio=get_arg('expanded_iou_min_ratio', 1.0),
+            expanded_iou_max_ratio=get_arg('expanded_iou_max_ratio', 1.5),
+        )
 
     def loss(self, batch, preds=None):
         """
