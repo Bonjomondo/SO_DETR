@@ -1,0 +1,55 @@
+name: Apply SO-DETR V1.0 DDP fix
+
+on:
+  push:
+    branches:
+      - SO-DETR-V1.0
+    paths:
+      - .github/workflows/apply-v1-ddp-fix.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch-ddp:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out V1.0 branch
+        uses: actions/checkout@v4
+        with:
+          ref: SO-DETR-V1.0
+          fetch-depth: 0
+
+      - name: Enable unused-parameter detection for SO-DETR DDP
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          trainer = Path("ultralytics/engine/trainer.py")
+          text = trainer.read_text(encoding="utf-8")
+
+          old = "            self.model = DDP(self.model, device_ids=[RANK])"
+          new = """            self.model = DDP(
+                          self.model,
+                          device_ids=[RANK],
+                          find_unused_parameters=True,
+                      )"""
+
+          if new not in text:
+              if old not in text:
+                  raise SystemExit("Expected DDP construction was not found; refusing to modify the branch.")
+              trainer.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+          # This workflow is a one-shot patch mechanism. Remove it from the
+          # resulting source tree so V1.0 only retains the actual code fix.
+          Path(".github/workflows/apply-v1-ddp-fix.yml").unlink()
+          PY
+
+      - name: Commit the DDP fix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add ultralytics/engine/trainer.py .github/workflows/apply-v1-ddp-fix.yml
+          git commit -m "fix(ddp): allow unused SO-DETR parameters in multi-GPU training"
+          git push origin HEAD:SO-DETR-V1.0
