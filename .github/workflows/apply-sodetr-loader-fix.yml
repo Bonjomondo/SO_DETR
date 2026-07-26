@@ -6,8 +6,10 @@ on:
       - SO-DETR-V1.0
     paths:
       - .github/workflows/apply-sodetr-loader-fix.yml
-
-permissions:
+  pull_request_target:
+    branches:
+      - SO-DETR-V1.0
+\ npermissions:
   contents: write
 
 jobs:
