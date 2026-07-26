@@ -9,7 +9,8 @@ on:
   pull_request_target:
     branches:
       - SO-DETR-V1.0
-\ npermissions:
+
+permissions:
   contents: write
 
 jobs:
