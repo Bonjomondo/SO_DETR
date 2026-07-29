@@ -5,6 +5,9 @@ V1.1 adds scale-adaptive Expanded-IoU supervision while keeping the model
 architecture and inference graph unchanged. The recommended setting adapts
 only encoder query-quality targets and leaves the original regression loss
 untouched for a controlled ablation.
+
+Training keeps Ultralytics internal validation for convergence and best.pt
+selection, saves last.pt, then formally evaluates best.pt with COCOeval.
 """
 
 from __future__ import annotations
@@ -12,6 +15,12 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 from typing import Dict
+
+from sodetr_formal_coco import (
+    add_formal_coco_arguments,
+    prepare_formal_coco_eval,
+    run_formal_coco_eval,
+)
 
 
 ROOT = Path(__file__).resolve().parent
@@ -111,11 +120,17 @@ def parse_args() -> argparse.Namespace:
         metavar="CHECKPOINT",
         help="Resume from a last.pt checkpoint.",
     )
+    add_formal_coco_arguments(parser)
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
+    annotation_json = prepare_formal_coco_eval(
+        args.data,
+        args.coco_anno,
+        args.formal_coco_eval,
+    )
     from ultralytics import RTDETR
 
     if args.expanded_iou_fixed_ratio <= 0:
@@ -187,6 +202,21 @@ def main() -> None:
     )
     print(f"  run:   {Path(args.project) / run_name}")
     model.train(**train_args)
+
+    if annotation_json is not None:
+        if model.trainer is None or model.trainer.save_dir is None:
+            raise RuntimeError(
+                "Training completed but Ultralytics did not expose the run save directory."
+            )
+        run_formal_coco_eval(
+            data_yaml=args.data,
+            annotation_json=annotation_json,
+            train_save_dir=model.trainer.save_dir,
+            imgsz=args.imgsz,
+            batch=args.batch,
+            workers=args.workers,
+            device=args.device,
+        )
 
 
 if __name__ == "__main__":
