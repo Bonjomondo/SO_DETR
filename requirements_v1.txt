@@ -17,3 +17,5 @@ seaborn>=0.12
 timm>=0.9,<1.1
 thop>=0.1.1
 dill>=0.3.6
+pycocotools>=2.0.7
+openpyxl>=3.1,<4

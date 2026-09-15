@@ -10,6 +10,9 @@ import sys
 from pathlib import Path
 from typing import List
 
+from sodetr_formal_coco import add_formal_coco_arguments
+from sodetr_reports import add_report_arguments
+
 
 ROOT = Path(__file__).resolve().parent
 TRAIN_SCRIPT = ROOT / "train_sodetr_visdrone.py"
@@ -65,6 +68,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--non-deterministic", action="store_true")
     parser.add_argument("--no-pretrained", action="store_true")
     parser.add_argument("--exist-ok", action="store_true")
+    add_formal_coco_arguments(parser)
+    add_report_arguments(parser)
     return parser.parse_args()
 
 
@@ -130,6 +135,15 @@ def build_command(args: argparse.Namespace, experiment: str, mode: str) -> List[
     ):
         if enabled:
             command.append(flag)
+    command.extend(["--reports-dir", str(args.reports_dir)])
+    for value, flag in ((args.coco_anno, "--coco-anno"), (args.baseline, "--baseline"),
+                        (args.experiment_description, "--experiment-description")):
+        if value is not None:
+            command.extend([flag, str(value)])
+    if not args.formal_coco_eval:
+        command.append("--no-formal-coco-eval")
+    if not args.reports:
+        command.append("--no-reports")
     return command
 
 

@@ -5,6 +5,9 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import hashlib
+import tempfile
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -51,7 +54,10 @@ def resolve_coco_annotation(data_yaml: str | Path, explicit: str | Path | None) 
     candidates: list[Path] = []
     configured = explicit or os.environ.get("SODETR_COCO_ANNO")
     if configured:
-        candidates.append(_resolve_relative(configured, data_yaml.parent))
+        selected = _resolve_relative(configured, data_yaml.parent)
+        if not selected.is_file():
+            raise FileNotFoundError(f"Explicit COCO annotation not found: {selected}")
+        return selected
 
     for key in ("coco_anno", "anno_json", "val_json"):
         if config.get(key):
@@ -120,10 +126,15 @@ def _read_json(path: Path) -> Any:
 
 
 def _write_json(path: Path, value: Any) -> None:
-    path.write_text(
-        json.dumps(value, indent=2, ensure_ascii=False) + "\n",
-        encoding="utf-8",
-    )
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, temporary = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as stream:
+            json.dump(value, stream, indent=2, ensure_ascii=False, allow_nan=False)
+            stream.write("\n")
+        os.replace(temporary, path)
+    finally:
+        Path(temporary).unlink(missing_ok=True)
 
 
 def _dataset_names(data_yaml: Path) -> dict[int, str]:
@@ -205,7 +216,9 @@ def _normalize_predictions(
         raise ValueError("A prediction is missing category_id.")
 
     category_mapping: dict[int, Any] = {}
-    if not prediction_category_ids.issubset(gt_category_ids):
+    # This repository exports YOLO class indices, even when they happen to
+    # overlap COCO category IDs (e.g. a batch with no class zero).
+    if prediction_category_ids:
         data_names = _dataset_names(data_yaml)
         gt_name_to_id = {str(category["name"]): category["id"] for category in categories}
         for prediction_id in prediction_category_ids:
@@ -240,7 +253,7 @@ def _normalize_predictions(
 
 
 def _single_device(device: str) -> str:
-    return str(device).split(",", 1)[0].strip()
+    return str(device[0] if isinstance(device, (list, tuple)) else device).split(",", 1)[0].strip()
 
 
 def run_formal_coco_eval(
@@ -251,9 +264,7 @@ def run_formal_coco_eval(
     batch: int,
     workers: int,
     device: str,
-) -> dict[str, float]:
-    from pycocotools.coco import COCO
-    from pycocotools.cocoeval import COCOeval
+) -> dict[str, float | None]:
     from ultralytics import RTDETR
 
     data_yaml = Path(data_yaml).resolve()
@@ -266,7 +277,12 @@ def run_formal_coco_eval(
     eval_project = train_save_dir / "formal_coco"
     eval_name = "best"
     eval_dir = eval_project / eval_name
+    eval_dir.mkdir(parents=True, exist_ok=True)
+    # Never consume predictions left behind by an earlier validation.
+    (eval_dir / "predictions.json").unlink(missing_ok=True)
     eval_model = RTDETR(str(best_weights))
+    exported = {}
+    eval_model.add_callback("on_val_end", lambda validator: exported.update(predictions=validator.jdict))
     eval_model.val(
         data=str(data_yaml),
         split="val",
@@ -284,33 +300,88 @@ def run_formal_coco_eval(
     )
 
     raw_json = eval_dir / "predictions.json"
+    if not raw_json.is_file() and exported.get("predictions") == []:
+        _write_json(raw_json, [])
     if not raw_json.is_file():
         raise FileNotFoundError(f"Prediction JSON not found: {raw_json}")
     normalized_json = eval_dir / "predictions_coco.json"
     mapping = _normalize_predictions(raw_json, annotation_json, data_yaml, normalized_json)
 
+    record = evaluate_predictions(annotation_json, normalized_json, {
+        "weights": str(best_weights),
+        "weights_mtime_ns": best_weights.stat().st_mtime_ns,
+        "data": str(data_yaml),
+        "raw_predictions": str(raw_json.resolve()),
+        "mapping": mapping,
+        "inference": {"imgsz": imgsz, "max_det": 300, "half": False, "split": "val"},
+    })
+    metrics_json = eval_dir / "coco_metrics.json"
+    _write_json(metrics_json, record)
+    print(f"[Formal COCOeval] saved: {metrics_json}", flush=True)
+    return record["metrics"]
+
+
+def evaluate_predictions(annotation_json: Path, predictions_json: Path,
+                         metadata: dict | None = None) -> dict:
+    """Evaluate saved, normalized predictions without loading a model or GPU."""
+    import numpy as np
+    from pycocotools.coco import COCO
+    from pycocotools.cocoeval import COCOeval
+
     ground_truth = COCO(str(annotation_json))
-    detections = ground_truth.loadRes(str(normalized_json))
+    predictions = _read_json(predictions_json)
+    if predictions:
+        detections = ground_truth.loadRes(predictions)
+    else:
+        # pycocotools.loadRes([]) indexes the first item and raises IndexError.
+        detections = COCO()
+        detections.dataset = {"images": ground_truth.dataset["images"],
+                              "categories": ground_truth.dataset["categories"], "annotations": []}
+        detections.createIndex()
     evaluator = COCOeval(ground_truth, detections, "bbox")
     evaluator.params.maxDets = [1, 10, 100]
     evaluator.evaluate()
     evaluator.accumulate()
     evaluator.summarize()
 
-    metrics = {name: float(value) for name, value in zip(COCO_STAT_NAMES, evaluator.stats)}
-    record = {
+    def valid_mean(values):
+        valid = values[values > -1]
+        return float(valid.mean()) if valid.size else None
+
+    metrics = {name: float(value) if value >= 0 else None
+               for name, value in zip(COCO_STAT_NAMES, evaluator.stats)}
+    precision = evaluator.eval["precision"]  # [IoU, recall, category, area, maxDets]
+    per_class = {}
+    for index, category_id in enumerate(evaluator.params.catIds):
+        values = precision[:, :, index, 0, -1]
+        per_class[str(category_id)] = {
+            "name": ground_truth.cats[category_id]["name"],
+            "AP": valid_mean(values),
+            "AP50": valid_mean(values[np.isclose(evaluator.params.iouThrs, .5)]),
+            "AP75": valid_mean(values[np.isclose(evaluator.params.iouThrs, .75)]),
+        }
+    return {
+        **(metadata or {}),
         "protocol": "pycocotools.COCOeval bbox",
         "maxDets": [1, 10, 100],
-        "weights": str(best_weights),
-        "data": str(data_yaml),
-        "annotations": str(annotation_json),
-        "raw_predictions": str(raw_json.resolve()),
-        "normalized_predictions": str(normalized_json.resolve()),
-        "mapping": mapping,
+        "evaluated_at": datetime.now(timezone.utc).isoformat(),
+        "annotations": str(annotation_json.resolve()),
+        "annotation_sha256": hashlib.sha256(annotation_json.read_bytes()).hexdigest(),
+        "normalized_predictions": str(predictions_json.resolve()),
         "metrics": metrics,
-        "metrics_percent": {name: value * 100.0 for name, value in metrics.items()},
+        "metrics_percent": {name: value * 100 if value is not None else None
+                            for name, value in metrics.items()},
+        "per_class": per_class,
     }
-    metrics_json = eval_dir / "coco_metrics.json"
-    _write_json(metrics_json, record)
-    print(f"[Formal COCOeval] saved: {metrics_json}", flush=True)
-    return metrics
+
+
+def enrich_saved_evaluation(metrics_json: Path) -> dict:
+    """Backfill per-class AP from an existing prediction export on CPU."""
+    record = _read_json(metrics_json)
+    annotation = Path(record["annotations"])
+    predictions = metrics_json.parent / "predictions_coco.json"
+    if not predictions.is_file():
+        predictions = Path(record["normalized_predictions"])
+    enriched = evaluate_predictions(annotation, predictions, record)
+    _write_json(metrics_json, enriched)
+    return enriched

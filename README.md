@@ -101,3 +101,9 @@ See [V1.1_SCALE_ADAPTIVE_IOU.md](V1.1_SCALE_ADAPTIVE_IOU.md) for the design boun
 | SO-DETR-EV2 (Distilled) | 12.1 | 33.3 | 36.9 | 73.6 |
 
 These numbers are retained as source-reported reference values. V1.0 and V1.1 experiments in this fork should be recorded separately under the standardized training protocol.
+
+## 自动实验报告
+
+训练结束后默认自动 COCOeval 并更新 `reports/experiments.md`、`experiments.xlsx`、JSON/CSV 与三张对比图。支持实验说明、每类别 AP、兼容基线的百分点比较和评估失败重试。
+
+已有实验可运行 `python sodetr_reports.py --backfill-per-class` 补齐每类别 AP 并生成报告。完整用法和指标口径见 [EXPERIMENT_REPORTS.md](EXPERIMENT_REPORTS.md)。

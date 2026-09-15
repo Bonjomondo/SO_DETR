@@ -786,7 +786,6 @@ def torch_safe_load(weight, safe_only=False):
             attributes={
                 "ultralytics.nn.modules.block.Silence": "torch.nn.Identity",  # YOLOv9e
                 "ultralytics.nn.tasks.YOLOv10DetectionModel": "ultralytics.nn.tasks.DetectionModel",  # YOLOv10
-                "ultralytics.utils.loss.v10DetectLoss": "ultralytics.utils.loss.E2EDetectLoss",  # YOLOv10
             },
         ):
             if safe_only:
@@ -797,7 +796,10 @@ def torch_safe_load(weight, safe_only=False):
                 with open(file, "rb") as f:
                     ckpt = torch.load(f, pickle_module=safe_pickle)
             else:
-                ckpt = torch.load(file, map_location="cpu")
+                # Training checkpoints contain the serialized model object and
+                # are trusted local artifacts; restore the full checkpoint
+                # explicitly for PyTorch 2.6+ compatibility.
+                ckpt = torch.load(file, map_location="cpu", weights_only=False)
 
     except ModuleNotFoundError as e:  # e.name is missing module name
         if e.name == "models":

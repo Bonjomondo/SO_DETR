@@ -13,6 +13,7 @@ selection, saves last.pt, then formally evaluates best.pt with COCOeval.
 from __future__ import annotations
 
 import argparse
+import os
 from pathlib import Path
 from typing import Dict
 
@@ -21,6 +22,8 @@ from sodetr_formal_coco import (
     prepare_formal_coco_eval,
     run_formal_coco_eval,
 )
+
+from sodetr_reports import add_report_arguments, generate_reports, read_json, write_json
 
 
 ROOT = Path(__file__).resolve().parent
@@ -78,6 +81,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--lr0", type=float, default=1e-4)
     parser.add_argument("--lrf", type=float, default=1.0)
     parser.add_argument("--weight-decay", type=float, default=1e-4)
+    parser.add_argument(
+        "--nbs",
+        type=int,
+        default=None,
+        help="Nominal batch size used for hyperparameter scaling (optional).",
+    )
     parser.add_argument("--mixup", type=float, default=0.2)
     parser.add_argument("--close-mosaic", type=int, default=0)
     parser.add_argument(
@@ -121,11 +130,23 @@ def parse_args() -> argparse.Namespace:
         help="Resume from a last.pt checkpoint.",
     )
     add_formal_coco_arguments(parser)
+    add_report_arguments(parser)
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
+    if args.reports:
+        try:
+            import openpyxl  # noqa: F401
+            import matplotlib  # noqa: F401
+        except ImportError as exc:
+            raise RuntimeError("Report dependencies missing: pip install -r requirements_v1.txt (or use --no-reports)") from exc
+    # torchrun workers must not run evaluation/reporting again; the launcher does it.
+    os.environ.setdefault("SODETR_REPORT_OWNER_PID", str(os.getpid()))
+    # Generated DDP scripts live outside the project and must import the custom trainer.
+    os.environ["PYTHONPATH"] = str(ROOT) + os.pathsep + os.environ.get("PYTHONPATH", "")
+    report_owner = os.environ["SODETR_REPORT_OWNER_PID"] == str(os.getpid()) and int(os.environ.get("RANK", -1)) in (-1, 0)
     annotation_json = prepare_formal_coco_eval(
         args.data,
         args.coco_anno,
@@ -188,6 +209,8 @@ def main() -> None:
         "plots": True,
         "verbose": True,
     }
+    if args.nbs is not None:
+        train_args["nbs"] = args.nbs
     if args.resume is not None:
         train_args["resume"] = True
 
@@ -201,22 +224,56 @@ def main() -> None:
         f"clamped to [{args.expanded_iou_min_ratio}, {args.expanded_iou_max_ratio}]"
     )
     print(f"  run:   {Path(args.project) / run_name}")
-    model.train(**train_args)
+    from sodetr_reporting_trainer import ReportingRTDETRTrainer
 
-    if annotation_json is not None:
+    try:
+        model.train(trainer=ReportingRTDETRTrainer, **train_args)
+        if not report_owner:
+            return
         if model.trainer is None or model.trainer.save_dir is None:
-            raise RuntimeError(
-                "Training completed but Ultralytics did not expose the run save directory."
-            )
-        run_formal_coco_eval(
-            data_yaml=args.data,
-            annotation_json=annotation_json,
-            train_save_dir=model.trainer.save_dir,
-            imgsz=args.imgsz,
-            batch=args.batch,
-            workers=args.workers,
-            device=args.device,
-        )
+            raise RuntimeError("Training completed without a run save directory.")
+        run_dir = Path(model.trainer.save_dir).resolve()
+        saved_args = vars(model.trainer.args)
+        # Resume uses the trainer's restored configuration, not CLI defaults.
+        data_yaml = saved_args["data"]
+        annotation_json = prepare_formal_coco_eval(data_yaml, args.coco_anno, args.formal_coco_eval)
+        if annotation_json is not None:
+            write_json(run_dir / "evaluation_state.json", {"status": "running"})
+            try:
+                run_formal_coco_eval(
+                    data_yaml=data_yaml, annotation_json=annotation_json, train_save_dir=run_dir,
+                    imgsz=saved_args["imgsz"], batch=saved_args["batch"], workers=saved_args["workers"],
+                    device=saved_args["device"],
+                )
+            except Exception as exc:
+                write_json(run_dir / "evaluation_state.json", {"status": "failed", "error": str(exc)})
+                raise
+            write_json(run_dir / "evaluation_state.json", {"status": "completed"})
+        else:
+            write_json(run_dir / "evaluation_state.json", {"status": "skipped"})
+    finally:
+        trainer = getattr(model, "trainer", None)
+        if report_owner and trainer is not None and Path(trainer.save_dir).exists():
+            run_dir = Path(trainer.save_dir).resolve()
+            meta = read_json(run_dir / "experiment.json")
+            if args.experiment_description:
+                meta["description"] = args.experiment_description
+            # The trainer records architecture from the actual loaded model.
+            state = read_json(run_dir / "training_state.json")
+            if state.get("model"):
+                meta["model"] = state["model"]
+            write_json(run_dir / "experiment.json", meta)
+            if args.reports:
+                # Keep the original training/evaluation exception if report export also fails.
+                import sys
+                active_error = sys.exc_info()[0] is not None
+                try:
+                    generate_reports(run_dir.parent, args.reports_dir, args.baseline)
+                    print(f"[Reports] saved: {args.reports_dir.resolve()}", flush=True)
+                except Exception as exc:
+                    if not active_error:
+                        raise
+                    print(f"[Reports] export failed: {exc}", flush=True)
 
 
 if __name__ == "__main__":
