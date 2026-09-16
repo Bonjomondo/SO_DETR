@@ -1,0 +1,8 @@
+{
+  "status": "unknown",
+  "model": "/home/ubuntu/文档/ZHJ_UAV/SO_DETR/ultralytics/cfg/models/A-Test-M-R18.yaml",
+  "parameters": 20593912,
+  "best_epoch": 284,
+  "best_epoch_source": "best.pt checkpoint",
+  "metadata_source": "/home/ubuntu/文档/ZHJ_UAV/SO_DETR/runs/train/Q0/weights/best.pt"
+}

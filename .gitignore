@@ -15,7 +15,7 @@ env/
 .DS_Store
 
 # Experiment outputs
-runs/
+# runs/
 wandb/
 mlruns/
 
@@ -39,4 +39,4 @@ weights/
 *.tmp
 
 # Generated experiment reports
-reports/
+# reports/

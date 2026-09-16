@@ -1,0 +1,16 @@
+{
+  "status": "completed",
+  "stop_reason": "early_stopping",
+  "started_at": "2026-09-15T13:40:15.739814+00:00",
+  "model": "/home/ubuntu/文档/ZHJ_UAV/SO_DETR/ultralytics/cfg/models/A-Test-M-R18.yaml",
+  "parameters": 20593912,
+  "gflops": 65.320448,
+  "best_epoch": 348,
+  "epochs_completed": 388,
+  "timing_scope": "recorded training sessions, includes validation; excludes formal COCOeval",
+  "training_seconds": 58980.401039876,
+  "updated_at": "2026-09-16T06:03:15.729366+00:00",
+  "peak_gpu_memory_gib_rank0": 16.89487648010254,
+  "finalization_error": "Weights only load failed. This file can still be loaded, to do so you have two options, \u001b[1mdo those steps only if you trust the source of the checkpoint\u001b[0m. \n\t(1) In PyTorch 2.6, we changed the default value of the `weights_only` argument in `torch.load` from `False` to `True`. Re-running `torch.load` with `weights_only` set to `False` will likely succeed, but it can result in arbitrary code execution. Do it only if you got the file from a trusted source.\n\t(2) Alternatively, to load with `weights_only=True` please check the recommended steps in the following error message.\n\tWeightsUnpickler error: Unsupported global: GLOBAL ultralytics.nn.tasks.RTDETRDetectionModel was not an allowed global by default. Please use `torch.serialization.add_safe_globals([ultralytics.nn.tasks.RTDETRDetectionModel])` or the `torch.serialization.safe_globals([ultralytics.nn.tasks.RTDETRDetectionModel])` context manager to allowlist this global if you trust this class/function.\n\nCheck the documentation of torch.load to learn more about types accepted by default with weights_only https://pytorch.org/docs/stable/generated/torch.load.html.",
+  "finalization_note": "Training finished normally and early-stopped; the post-training strip_optimizer step failed under the PyTorch weights_only default. Fixed in ultralytics/utils/torch_utils.py; checkpoints were never modified."
+}

@@ -1,0 +1,4 @@
+{
+  "description": "Q2：仅回归监督使用尺度自适应 Expanded-IoU；其余训练配置与 Q0 一致",
+  "model": "/home/ubuntu/文档/ZHJ_UAV/SO_DETR/ultralytics/cfg/models/A-Test-M-R18.yaml"
+}
