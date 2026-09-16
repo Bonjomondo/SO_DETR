@@ -45,6 +45,23 @@ python sodetr_reports.py --evaluate Q1 --device 0 \
   --coco-anno "$(pwd)/datasets/VisDrone2019-DET-YOLO/annotations/VisDrone2019-DET_val_coco.json"
 ```
 
+## PyTorch 2.6+ 的 `weights_only` 兼容
+
+`torch.load` 从 PyTorch 2.6 起默认 `weights_only=True`，会拒绝反序列化 checkpoint 中保存的自定义类（例如 `ultralytics.nn.tasks.RTDETRDetectionModel`），报错形式为 `_pickle.UnpicklingError: Weights only load failed`。本仓库对可信的本地 checkpoint 显式传入 `weights_only=False`：
+
+- `ultralytics/nn/tasks.py::torch_safe_load`：训练、验证、推理的加载入口；
+- `ultralytics/utils/torch_utils.py::strip_optimizer`：`final_eval()` 的收尾步骤；
+- `sodetr_reports.py::backfill_checkpoint_info`：显式补算。
+
+注意 Ultralytics 保存的是模型对象而非纯 `state_dict`，因此即使已经过 `strip_optimizer`，`weights_only=True` 仍然会失败，这是预期行为。
+
+若训练已正常结束、只是收尾阶段抛出 `UnpicklingError`，`training_state.json` 会被记为 `failed`，而报告把该状态视为过期、不纳入比较。此时权重通常完好，可先重跑评估，再把状态改回 `completed`（保留原始异常文本备查）：
+
+```bash
+python sodetr_reports.py --evaluate Q2 --device 0 \
+  --coco-anno "$(pwd)/datasets/VisDrone2019-DET-YOLO/annotations/VisDrone2019-DET_val_coco.json"
+```
+
 ## 输出与实验说明
 
 每个实验目录新增 `training_state.json`（状态、实际轮数、最佳轮次、训练会话累计耗时、参数量、估算 GFLOPs、rank 0 峰值 CUDA allocated 显存）、`evaluation_state.json` 和 `experiment.json`。正式指标仍在 `formal_coco/best/coco_metrics.json`，增加每类别 AP/AP50/AP75、评估时间、GT SHA256、推理配置和 checkpoint 修改时间。无有效 GT 的指标使用 `null`。

@@ -444,7 +444,11 @@ def strip_optimizer(f: Union[str, Path] = 'best.pt', s: str = '') -> None:
             strip_optimizer(f)
         ```
     """
-    x = torch.load(f, map_location=torch.device('cpu'))
+    # Training checkpoints contain the serialized model object and are trusted
+    # local artifacts; restore the full checkpoint explicitly for PyTorch 2.6+,
+    # where torch.load defaults to weights_only=True and rejects custom classes
+    # such as RTDETRDetectionModel.
+    x = torch.load(f, map_location=torch.device('cpu'), weights_only=False)
     if 'model' not in x:
         LOGGER.info(f'Skipping {f}, not a valid Ultralytics model.')
         return
