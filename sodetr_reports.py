@@ -345,7 +345,6 @@ def excel(data, output):
     wb.save(output / "experiments.xlsx")
 
 
-def generate_reports(runs_dir: Path, output: Path, baseline=None) -> dict:
 def generate_reports(runs_dir: Path, output: Path, baseline=None, completed_only: bool = False) -> dict:
     import fcntl
     output = output.resolve()
@@ -359,7 +358,6 @@ def generate_reports(runs_dir: Path, output: Path, baseline=None, completed_only
             if not any((run / p).exists() for p in ("args.yaml", "results.csv", "formal_coco/best/coco_metrics.json")):
                 continue
             try:
-                records.append(collect_run(run))
                 rec = collect_run(run)
                 if completed_only and (rec.get("evaluation_status") != "completed" or not rec.get("metrics")):
                     continue
@@ -463,7 +461,6 @@ def main():
             except Exception as exc:
                 failures.append(f"{path}: {exc}")
                 print(f"[Backfill failed] {failures[-1]}", flush=True)
-    data = generate_reports(args.runs_dir, args.output, args.baseline)
     data = generate_reports(args.runs_dir, args.output, args.baseline, completed_only=args.completed_only)
     print(f"[Reports] {len(data['experiments'])} experiments → {args.output.resolve()}")
     if failures:
