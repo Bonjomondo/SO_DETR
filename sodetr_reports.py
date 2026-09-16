@@ -346,6 +346,7 @@ def excel(data, output):
 
 
 def generate_reports(runs_dir: Path, output: Path, baseline=None) -> dict:
+def generate_reports(runs_dir: Path, output: Path, baseline=None, completed_only: bool = False) -> dict:
     import fcntl
     output = output.resolve()
     output.mkdir(parents=True, exist_ok=True)
@@ -359,6 +360,10 @@ def generate_reports(runs_dir: Path, output: Path, baseline=None) -> dict:
                 continue
             try:
                 records.append(collect_run(run))
+                rec = collect_run(run)
+                if completed_only and (rec.get("evaluation_status") != "completed" or not rec.get("metrics")):
+                    continue
+                records.append(rec)
             except (ValueError, OSError, TypeError, AttributeError, yaml.YAMLError) as exc:
                 warnings.append(f"跳过损坏实验 {run.name}: {exc}")
         add_comparisons(records, baseline)
@@ -424,6 +429,7 @@ def main():
     parser.add_argument("--device", help="Override device when using --evaluate.")
     parser.add_argument("--backfill-checkpoint-info", action="store_true", help="Read trusted local best.pt files to recover model, parameters and best epoch. Requires the training environment.")
     parser.add_argument("--backfill-per-class", action="store_true", help="CPU COCOeval of saved normalized predictions for old runs missing per-class AP.")
+    parser.add_argument("--completed-only", action="store_true", help="Only include runs with completed formal evaluation, excluding pending or interrupted runs.")
     args = parser.parse_args()
     failures = []
     for name in args.evaluate:
@@ -458,6 +464,7 @@ def main():
                 failures.append(f"{path}: {exc}")
                 print(f"[Backfill failed] {failures[-1]}", flush=True)
     data = generate_reports(args.runs_dir, args.output, args.baseline)
+    data = generate_reports(args.runs_dir, args.output, args.baseline, completed_only=args.completed_only)
     print(f"[Reports] {len(data['experiments'])} experiments → {args.output.resolve()}")
     if failures:
         raise SystemExit(1)

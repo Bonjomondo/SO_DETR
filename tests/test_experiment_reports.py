@@ -91,6 +91,21 @@ class ExperimentReportsTest(unittest.TestCase):
         again = generate_reports(self.root / 'runs', output)
         self.assertEqual(len(again['experiments']), 2)
 
+    def test_completed_only_filtering(self):
+        self.fixture('Q0', 'fixed', .30)
+        interrupted = self.root / 'runs' / 'Q1_interrupted'
+        interrupted.mkdir(parents=True, exist_ok=True)
+        (interrupted / 'args.yaml').write_text('expanded_iou_mode: adaptive-quality\n')
+        (interrupted / 'results.csv').write_text('epoch,train/giou_loss\n1,0.5\n')
+        write_json(interrupted / 'evaluation_state.json', {'status': 'pending'})
+
+        all_data = generate_reports(self.root / 'runs', self.root / 'reports', completed_only=False)
+        self.assertEqual(len(all_data['experiments']), 2)
+
+        comp_data = generate_reports(self.root / 'runs', self.root / 'reports', completed_only=True)
+        self.assertEqual(len(comp_data['experiments']), 1)
+        self.assertEqual(comp_data['experiments'][0]['run'], 'Q0')
+
     def test_empty_project_exports(self):
         data = generate_reports(self.root / 'missing', self.root / 'reports')
         self.assertEqual(data['experiments'], [])
