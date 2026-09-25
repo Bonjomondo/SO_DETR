@@ -1,6 +1,6 @@
 <h2 align="center">SO-DETR: Leveraging Dual-Domain Features and Knowledge Distillation for Small Object Detection</h2>
 
-This repository is a research fork of the official SO-DETR implementation. The `SO-DETR-V1.1` branch adds scale-adaptive Expanded-IoU query-quality supervision on top of the clean, reproducible V1.0 baseline.
+This repository is a research fork of the official SO-DETR implementation. The `SO-DETR-V1.1` branch contains the clean V1.0 baseline, the historical V1.1 scale-adaptive Expanded-IoU experiments, and the V1.2/Q1P one-sided follow-up.
 
 ## V1.1 scale-adaptive Expanded-IoU
 
@@ -10,7 +10,7 @@ V1.1 replaces the fixed `ratio=1.25` query-quality target with a per-target rati
 ratio = clamp(1 + alpha * exp(-normalized_area / tau), min_ratio, max_ratio)
 ```
 
-The recommended defaults are `alpha=0.5`, `tau=0.01`, `min_ratio=1.0`, and `max_ratio=1.5`. Small targets receive more tolerant query-quality supervision, while large targets approach ordinary IoU geometry. The default V1.1 experiment applies adaptation only to the query-quality target; the published SO-DETR regression loss remains fixed at `ratio=1.25`.
+The V1.1 defaults are `alpha=0.5`, `tau=0.01`, `min_ratio=1.0`, and `max_ratio=1.5`. Small targets receive more tolerant query-quality supervision, while sufficiently large targets can receive a ratio below the published `1.25` baseline. The historical V1.1 Q1 experiment applies adaptation only to the query-quality target; the published SO-DETR regression loss remains fixed at `ratio=1.25`.
 
 This change affects training only. It adds no parameters, FLOPs, or inference latency.
 
@@ -29,7 +29,7 @@ cp configs/visdrone-local.example.yaml configs/visdrone-local.yaml
 # Edit the `path` field in configs/visdrone-local.yaml.
 ```
 
-Run the recommended V1.1 R18 experiment:
+Run the historical V1.1 R18 Q1 experiment:
 
 ```bash
 python train_sodetr_visdrone.py \
@@ -68,6 +68,40 @@ python run_sodetr_v1_1_ablation.py \
 
 See [V1.1_SCALE_ADAPTIVE_IOU.md](V1.1_SCALE_ADAPTIVE_IOU.md) for the design boundary, ablation mapping, commands, and acceptance criteria. The unchanged baseline is documented in [V1.0_BASELINE.md](V1.0_BASELINE.md).
 
+## V1.2 / Q1P one-sided adaptive Expanded-IoU
+
+The seed-0 V1.1 result shows a small `APs` increase for Q1 together with lower `APm` and nearly unchanged total AP. Because the V1.1 curve can fall below `1.25`, Q1 changes supervision for both small and larger targets.
+
+V1.2/Q1P isolates the small-target side of that hypothesis by keeping the adaptive quality ratio at or above the published baseline:
+
+```text
+ratio = clamp(
+    1 + alpha * exp(-normalized_area / tau),
+    fixed_ratio,
+    max_ratio,
+)
+```
+
+With the default settings, Q1P uses `[1.25, 1.5]` for query-quality supervision and keeps regression fixed at `1.25`. Historical Q1 remains `[1.0, 1.5]`; old results are not reinterpreted or overwritten.
+
+Run Q1P seed0 with:
+
+```bash
+python run_sodetr_v1_2_one_sided.py \
+  --model r18 \
+  --data configs/visdrone-local.yaml \
+  --device 0,1 \
+  --seed 0
+```
+
+The launcher records a separate run name such as:
+
+```text
+sodetr-v1.2-r18-q1p-one-sided-quality-seed0
+```
+
+See [V1.2_ONE_SIDED_ADAPTIVE_IOU.md](V1.2_ONE_SIDED_ADAPTIVE_IOU.md) for the motivation, exact crossover analysis, direct command, and recommended multi-seed sequence.
+
 ## Published model configurations
 
 | Variant | Model YAML | Intended role in this fork |
@@ -100,7 +134,7 @@ See [V1.1_SCALE_ADAPTIVE_IOU.md](V1.1_SCALE_ADAPTIVE_IOU.md) for the design boun
 | SO-DETR-EV2 | 12.1 | 33.3 | 33.7 | 70.6 |
 | SO-DETR-EV2 (Distilled) | 12.1 | 33.3 | 36.9 | 73.6 |
 
-These numbers are retained as source-reported reference values. V1.0 and V1.1 experiments in this fork should be recorded separately under the standardized training protocol.
+These numbers are retained as source-reported reference values. V1.0, V1.1, and V1.2 experiments in this fork should be recorded separately under the standardized training protocol.
 
 ## Results in this fork
 
@@ -113,8 +147,9 @@ COCOeval on `weights/best.pt`. Values are AP in percent.
 | Q1 | `adaptive-quality` | 400 epochs (best 382) | 28.90 | 48.16 | 29.36 | 21.05 | 39.06 | 45.73 |
 | Q2 | `adaptive-regression` | 388 epochs, early stop (best 348) | 28.65 | 47.71 | 28.86 | 20.55 | 38.79 | 41.17 |
 | Q3 | `adaptive-both` | in progress | — | — | — | — | — | — |
+| Q1P | `adaptive-quality`, min ratio = 1.25 | not run yet | — | — | — | — | — | — |
 
-These are single seed-0 runs. Delta-to-baseline is intentionally not reported here: Q0
+These are single seed-0 runs where available. Delta-to-baseline is intentionally not reported here: Q0
 predates structured telemetry (training status and stop reason unknown), and the runs are
 not yet verified as configuration- and protocol-identical. Treat this table as measurements,
 not as evidence that one mode is better. Run seeds 1 and 2 before drawing conclusions.
