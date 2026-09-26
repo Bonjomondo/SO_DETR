@@ -1,0 +1,4 @@
+{
+  "description": "V1.2 Q1P: one-sided adaptive query-quality Expanded-IoU; adaptive ratio is lower-bounded by the fixed baseline ratio 1.25; regression remains fixed.",
+  "model": "/home/ubuntu/文档/ZHJ_UAV/SO_DETR/ultralytics/cfg/models/A-Test-M-R18.yaml"
+}

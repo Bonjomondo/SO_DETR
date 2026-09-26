@@ -1,0 +1,130 @@
+{
+  "weights": "/home/ubuntu/文档/ZHJ_UAV/SO_DETR/runs/train/sodetr-v1.2-r18-q1p-one-sided-quality-seed0/weights/best.pt",
+  "weights_mtime_ns": 1790398748091773185,
+  "data": "/home/ubuntu/文档/ZHJ_UAV/SO_DETR/datasets/VisDrone2019-DET-YOLO/data.yaml",
+  "raw_predictions": "/home/ubuntu/文档/ZHJ_UAV/SO_DETR/runs/train/sodetr-v1.2-r18-q1p-one-sided-quality-seed0/formal_coco/best/predictions.json",
+  "mapping": {
+    "prediction_entries": 164400,
+    "prediction_images": 548,
+    "ground_truth_images": 548,
+    "converted_image_entries": 164400,
+    "category_mapping": {
+      "0": 1,
+      "1": 2,
+      "2": 3,
+      "3": 4,
+      "4": 5,
+      "5": 6,
+      "6": 7,
+      "7": 8,
+      "8": 9,
+      "9": 10
+    }
+  },
+  "inference": {
+    "imgsz": 640,
+    "max_det": 300,
+    "half": false,
+    "split": "val"
+  },
+  "protocol": "pycocotools.COCOeval bbox",
+  "maxDets": [
+    1,
+    10,
+    100
+  ],
+  "evaluated_at": "2026-09-26T04:59:33.795821+00:00",
+  "annotations": "/home/ubuntu/文档/ZHJ_UAV/SO_DETR/datasets/VisDrone2019-DET-YOLO/annotations/VisDrone2019-DET_val_coco.json",
+  "annotation_sha256": "6f8b8686864f1485ab172de9339f7049593f74766f6654c6e980a6c00d810371",
+  "normalized_predictions": "/home/ubuntu/文档/ZHJ_UAV/SO_DETR/runs/train/sodetr-v1.2-r18-q1p-one-sided-quality-seed0/formal_coco/best/predictions_coco.json",
+  "metrics": {
+    "AP": 0.2905916728590069,
+    "AP50": 0.47843523825066314,
+    "AP75": 0.295819003831482,
+    "APs": 0.20772780722400214,
+    "APm": 0.39637950709266084,
+    "APl": 0.4342057585433899,
+    "AR1": 0.10981768820379009,
+    "AR10": 0.2969806738748362,
+    "AR100": 0.387292379927747,
+    "ARs": 0.30187915510010177,
+    "ARm": 0.504468124708754,
+    "ARl": 0.5227044270593477
+  },
+  "metrics_percent": {
+    "AP": 29.05916728590069,
+    "AP50": 47.84352382506631,
+    "AP75": 29.581900383148202,
+    "APs": 20.772780722400213,
+    "APm": 39.637950709266086,
+    "APl": 43.42057585433899,
+    "AR1": 10.98176882037901,
+    "AR10": 29.69806738748362,
+    "AR100": 38.7292379927747,
+    "ARs": 30.18791551001018,
+    "ARm": 50.4468124708754,
+    "ARl": 52.27044270593477
+  },
+  "per_class": {
+    "1": {
+      "name": "pedestrian",
+      "AP": 0.28064488040274166,
+      "AP50": 0.5769292555413966,
+      "AP75": 0.2314192929569685
+    },
+    "2": {
+      "name": "people",
+      "AP": 0.20992960564135388,
+      "AP50": 0.49931235141569263,
+      "AP75": 0.1323071225637159
+    },
+    "3": {
+      "name": "bicycle",
+      "AP": 0.11957405563749918,
+      "AP50": 0.24839915148803876,
+      "AP75": 0.09562819646003883
+    },
+    "4": {
+      "name": "car",
+      "AP": 0.6089473501201477,
+      "AP50": 0.8463519850333757,
+      "AP75": 0.6857259863095739
+    },
+    "5": {
+      "name": "van",
+      "AP": 0.33405558082136916,
+      "AP50": 0.45415055256256187,
+      "AP75": 0.38028715777530603
+    },
+    "6": {
+      "name": "truck",
+      "AP": 0.28902618442034944,
+      "AP50": 0.4325524738193652,
+      "AP75": 0.3284293113379232
+    },
+    "7": {
+      "name": "tricycle",
+      "AP": 0.20494444316459484,
+      "AP50": 0.35400913915689464,
+      "AP75": 0.21565369733644718
+    },
+    "8": {
+      "name": "awning-tricycle",
+      "AP": 0.09806321564153782,
+      "AP50": 0.14859088372803003,
+      "AP75": 0.10315470779782866
+    },
+    "9": {
+      "name": "bus",
+      "AP": 0.46753457095845924,
+      "AP50": 0.6245178770476855,
+      "AP75": 0.5445359837386315
+    },
+    "10": {
+      "name": "motor",
+      "AP": 0.2931968417820162,
+      "AP50": 0.5995387127135905,
+      "AP75": 0.2410485820383874
+    }
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "status": "completed",
+  "stop_reason": "early_stopping",
+  "started_at": "2026-09-25T13:42:48.541924+00:00",
+  "model": "/home/ubuntu/文档/ZHJ_UAV/SO_DETR/ultralytics/cfg/models/A-Test-M-R18.yaml",
+  "parameters": 20593912,
+  "gflops": 65.320448,
+  "best_epoch": 349,
+  "epochs_completed": 389,
+  "timing_scope": "recorded training sessions, includes validation; excludes formal COCOeval",
+  "training_seconds": 54988.591152498004,
+  "updated_at": "2026-09-26T04:59:16.470509+00:00",
+  "peak_gpu_memory_gib_rank0": 16.89487648010254
+}

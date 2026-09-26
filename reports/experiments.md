@@ -1,6 +1,6 @@
 # SO-DETR 实验汇总
 
-更新时间：2026-09-17T02:47:34.555749+00:00
+更新时间：2026-09-26T04:59:33.874772+00:00
 
 COCO 指标以百分数显示，提升单位为百分点（pp）；JSON/CSV 保存 0–1 原始值。
 Precision/Recall 来自最佳轮次的内部验证日志，不属于正式 COCOeval 12 项指标。
@@ -14,6 +14,7 @@ Precision/Recall 来自最佳轮次的内部验证日志，不属于正式 COCOe
 | Q1 / Q1 | adaptive-quality | completed | 28.90 | 48.16 | 29.36 | 21.05 | 39.06 | 45.73 | — |
 | Q2 / Q2 | adaptive-regression | completed | 28.65 | 47.71 | 28.86 | 20.55 | 38.79 | 41.17 | — |
 | Q3 / Q3 | adaptive-both | pending | — | — | — | — | — | — | — |
+| Q1 / sodetr-v1.2-r18-q1p-one-sided-quality-seed0 | adaptive-quality | completed | 29.06 | 47.84 | 29.58 | 20.77 | 39.64 | 43.42 | — |
 
 ## 实验说明
 
@@ -63,7 +64,7 @@ Q2：仅回归监督使用尺度自适应 Expanded-IoU；其余训练配置与 Q
 
 ### Q3
 
-Q3：查询质量监督与回归损失均使用尺度自适应 Expanded-IoU
+查询质量监督与回归损失均使用尺度自适应 Expanded-IoU
 
 训练状态：failed；停止原因：AcceleratorError；训练轮数：312；最佳轮次：296（trainer）。
 
@@ -74,6 +75,20 @@ Q3：查询质量监督与回归损失均使用尺度自适应 Expanded-IoU
 - [results_csv](file:///home/ubuntu/%E6%96%87%E6%A1%A3/ZHJ_UAV/SO_DETR/runs/train/Q3/results.csv)
 - [coco_metrics](file:///home/ubuntu/%E6%96%87%E6%A1%A3/ZHJ_UAV/SO_DETR/runs/train/Q3/formal_coco/best/coco_metrics.json)（文件不存在）
 - [args](file:///home/ubuntu/%E6%96%87%E6%A1%A3/ZHJ_UAV/SO_DETR/runs/train/Q3/args.yaml)
+
+### sodetr-v1.2-r18-q1p-one-sided-quality-seed0
+
+V1.2 Q1P: one-sided adaptive query-quality Expanded-IoU; adaptive ratio is lower-bounded by the fixed baseline ratio 1.25; regression remains fixed.
+
+训练状态：completed；停止原因：early_stopping；训练轮数：389；最佳轮次：349（trainer）。
+
+数据说明：未找到唯一且配置、评估协议一致的 Q0；未计算提升。
+
+- [run](file:///home/ubuntu/%E6%96%87%E6%A1%A3/ZHJ_UAV/SO_DETR/runs/train/sodetr-v1.2-r18-q1p-one-sided-quality-seed0)
+- [best_weights](file:///home/ubuntu/%E6%96%87%E6%A1%A3/ZHJ_UAV/SO_DETR/runs/train/sodetr-v1.2-r18-q1p-one-sided-quality-seed0/weights/best.pt)
+- [results_csv](file:///home/ubuntu/%E6%96%87%E6%A1%A3/ZHJ_UAV/SO_DETR/runs/train/sodetr-v1.2-r18-q1p-one-sided-quality-seed0/results.csv)
+- [coco_metrics](file:///home/ubuntu/%E6%96%87%E6%A1%A3/ZHJ_UAV/SO_DETR/runs/train/sodetr-v1.2-r18-q1p-one-sided-quality-seed0/formal_coco/best/coco_metrics.json)
+- [args](file:///home/ubuntu/%E6%96%87%E6%A1%A3/ZHJ_UAV/SO_DETR/runs/train/sodetr-v1.2-r18-q1p-one-sided-quality-seed0/args.yaml)
 
 ## 图表
 
